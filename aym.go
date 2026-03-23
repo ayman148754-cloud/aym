@@ -1,148 +1,163 @@
 package main
 
 import (
- "bufio"
- "crypto/tls"
- "flag"
- "fmt"
- "net/http"
- "os"
- "strings"
- "sync"
- "time"
+"bufio"
+"crypto/tls"
+"flag"
+"fmt"
+"io/ioutil"
+"net"
+"net/http"
+"os"
+"strings"
+"sync"
+"time"
 )
 
-// تعريف الألوان الاحترافية
+// نظام الألوان الكريستالي المتطور
 const (
- Reset      = "\033[0m"
- Red        = "\033[31m"
- Green      = "\033[32m"
- Yellow     = "\033[33m"
- Blue       = "\033[34m"
- Purple     = "\033[35m"
- Cyan       = "\033[36m"
- Gray       = "\033[37m"
- BoldRed    = "\033[1;31m"
- BoldYellow = "\033[1;33m"
+Reset       = "\033[0m"
+RedCrystal  = "\033[1;91m" 
+Gold        = "\033[1;33m" 
+Emerald     = "\033[1;32m" 
+SkyBlue     = "\033[1;34m" 
+NeonPurple  = "\033[1;35m" 
+White       = "\033[1;37m"
+Gray        = "\033[2;37m"
 )
 
-// شعار الأداة (Banner)
 func printBanner() {
- banner := `
-    _       __ 
-   /   |\ \ / /|  \/  |
-  / /| | \   / | \  / |
- / ___ |  | |  | |\/| |
-/_/  |_|  |_|  |_|  |_| v3.0 [Enhanced Security]
-    `
- fmt.Printf("%s%s%s\n", Purple, banner, Reset)
- fmt.Printf("%s > Advanced Path Fuzzer & Security Severity Scanner%s\n", Gray, Reset)
- fmt.Printf("%s > Created by: ayman147754@gmail.com%s\n\n", Blue, Reset)
+banner := `
+    █████╗ ██╗   ██╗███╗   ███╗    ██╗   ██╗███████╗
+    ██╔══██╗╚██╗ ██╔╝████╗ ████║    ██║   ██║██╔════╝
+    ███████║ ╚████╔╝ ██╔████╔██║    ██║   ██║███████╗
+    ██╔══██║  ╚██╔╝  ██║╚██╔╝██║    ╚██╗ ██╔╝╚════██║
+    ██║  ██║   ██║   ██║ ╚═╝ ██║     ╚████╔╝ ███████║
+    ╚═╝  ╚═╝   ╚═╝   ╚═╝     ╚═╝      ╚═══╝  ╚══════╝
+    >> LEGENDARY SECURITY SCANNER v5.0 <<
+    `
+fmt.Printf("%s%s%s\n", NeonPurple, banner, Reset)
+fmt.Printf("%s > Powered by Ayman Intelligence Engine%s\n", Gold, Reset)
+fmt.Printf("%s > Full Recon, Subdomains, Fuzzing & Leak Detection%s\n\n", White, Reset)
 }
 
 func main() {
- // تعريف الـ Flags
- target := flag.String("u", "", "Target URL (e.g., https://example.com)")
- wordlist := flag.String("w", "", "Path to wordlist file")
- threads := flag.Int("t", 50, "Number of concurrent threads")
- output := flag.String("o", "", "File to save the output results")
- timeout := flag.Int("timeout", 5, "Request timeout in seconds")
- 
- flag.Parse()
+target := flag.String("u", "", "Target URL/Domain")
+wordlist := flag.String("w", "", "Main Wordlist")
+threads := flag.Int("t", 150, "Threads (Speed)")
+show404 := flag.Bool("all", false, "Show 404 results in Blue")
+flag.Parse()
 
- printBanner()
+if *target == "" || *wordlist == "" {
+  printBanner()
+  fmt.Printf("%s[!] Usage: aym -u target.com -w list.txt [-t 200] [-all]%s\n", RedCrystal, Reset)
+  return
+}
 
- if *target == "" || *wordlist == "" {
-  fmt.Printf("%s[!] Usage: aym -u <url> -w <wordlist> [-o output.txt] [-t 100]%s\n", Red, Reset)
-  return
- }
+printBanner()
+startTime := time.Now()
 
- // فتح ملف المسارات
- file, err := os.Open(*wordlist)
- if err != nil {
-  fmt.Printf("%s[!] Error opening wordlist: %v%s\n", Red, err, Reset)
-  return
- }
- defer file.Close()
+client := &http.Client{
+  Transport: &http.Transport{
+   TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+   DialContext: (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
+  },
+  Timeout: 10 * time.Second,
+}
 
- // ملف حفظ النتائج
- var outFile *os.File
- if *output != "" {
-  outFile, _ = os.Create(*output)
-  defer outFile.Close()
- }
+fmt.Printf("%s[*] INFO: Scanning Started at %s%s\n", Gray, startTime.Format("15:04:05"), Reset)
+fmt.Println(strings.Repeat("-", 70))
 
- // إعداد العميل (Client)
- client := &http.Client{
-  Transport: &http.Transport{
-   TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-  },
-  Timeout: time.Duration(*timeout) * time.Second,
- }
+// المرحلة 1: جمع المعلومات الاستخباراتية
+go scanSubdomains(*target, *wordlist, *threads)
 
- fmt.Printf("%s[%s]%s Starting Security Scan... Target: %s\n", Purple, time.Now().Format("15:04:05"), Reset, *target)
- fmt.Println("----------------------------------------------------------------------")
+// المرحلة 2: الفحص العميق
+scanPaths(client, *target, *wordlist, *threads, *show404)
 
- jobs := make(chan string, *threads)
- var wg sync.WaitGroup
+fmt.Println(strings.Repeat("-", 70))
+fmt.Printf("%s[+] FINISHED: Total Time: %v%s\n", Emerald, time.Since(startTime), Reset)
+}
 
- // تشغيل العمال (Workers)
- for i := 0; i < *threads; i++ {
-  wg.Add(1)
-  go func() {
-   defer wg.Done()
-   for path := range jobs {
-    fullURL := strings.TrimSuffix(*target, "/") + "/" + strings.TrimPrefix(path, "/")
-    
-    req, _ := http.NewRequest("GET", fullURL, nil)
-    req.Header.Set("User-Agent", "AYM-Security-Scanner/3.0")
+func scanSubdomains(target, wordlist string, threads int) {
+file, _ := os.Open(wordlist)
+defer file.Close()
+scanner := bufio.NewScanner(file)
+var wg sync.WaitGroup
+jobs := make(chan string, threads)
 
-    resp, err := client.Do(req)
-    if err != nil {
-     continue
-    }
+for i := 0; i < threads; i++ {
+  wg.Add(1)
+  go func() {
+   defer wg.Done()
+   for sub := range jobs {
+    host := sub + "." + strings.TrimPrefix(target, "https://")
+    if _, err := net.LookupHost(host); err == nil {
+     fmt.Printf("%s[DNS-FOUND] %-30s %s\n", Emerald, host, Reset)
+    }
+   }
+  }()
+}
+for scanner.Scan() { jobs <- scanner.Text() }
+close(jobs)
+wg.Wait()
+}
 
-    status := resp.StatusCode
-    if status != 404 {
-     severity := "[INFO]"
-     color := Green
-     lowerPath := strings.ToLower(path)
+func scanPaths(client *http.Client, target string, wordlist string, threads int, show404 bool) {
+file, _ := os.Open(wordlist)
+defer file.Close()
+scanner := bufio.NewScanner(file)
+var wg sync.WaitGroup
+jobs := make(chan string, threads)
 
-     // --- نظام تصنيف الخطورة ---
-     
-     // 1. خطورة قصوى (Critical) - ملفات حساسة
-     if strings.Contains(lowerPath, ".env")  strings.Contains(lowerPath, "config")  
-        strings.Contains(lowerPath, ".git")  strings.Contains(lowerPath, "backup")  
-        strings.Contains(lowerPath, "sql") || strings.Contains(lowerPath, "db") {
-      severity = "[CRITICAL]"
-      color = BoldRed
-      fmt.Print("\a") // صوت تنبيه (Beep) للثغرات الخطيرة
-     } else if strings.Contains(lowerPath, "admin")  strings.Contains(lowerPath, "login")  
-               strings.Contains(lowerPath, "panel")  status == 403  status == 401 {
-      // 2. خطورة عالية (High) - لوحات تحكم
-      severity = "[HIGH]"
-      color = BoldYellow
-     }
+for i := 0; i < threads; i++ {
+  wg.Add(1)
+  go func() {
+   defer wg.Done()
+   for path := range jobs {
+    fullURL := fmt.Sprintf("https://%s/%s", strings.TrimPrefix(target, "https://"), path)
+    
+    req, _ := http.NewRequest("GET", fullURL, nil)
+    // تضليل الـ WAF
+    req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AYM-Legendary/5.0")
+    req.Header.Set("X-Forwarded-For", "127.0.0.1")
 
-     result := fmt.Sprintf("%-10s [%d] %s (Size: %d)", severity, status, fullURL, resp.ContentLength)
-     fmt.Printf("%s%s%s\n", color, result, Reset)
+    resp, err := client.Do(req)
+    if err != nil { continue }
+    
+    body, _ := ioutil.ReadAll(resp.Body)
+    resp.Body.Close()
 
-     if outFile != nil {
-      outFile.WriteString(result + "\n")
-     }
-    }
-    resp.Body.Close()
-   }
-  }()
- }
+    status := resp.StatusCode
+    size := len(body)
+    lowerPath := strings.ToLower(path)
 
- // إرسال الكلمات من ملف المسارات
- scanner := bufio.NewScanner(file)
- for scanner.Scan() {
-  jobs <- scanner.Text()
- }
- close(jobs)
- wg.Wait()
+    // نظام التصنيف الأسطوري
+    if status == 404 {
+     if show404 {
+      fmt.Printf("%s[404] %-50s %s\n", SkyBlue, fullURL, Reset)
+     }
+    } else {
+     severity := "[LOW]"
+     color := Emerald
 
- fmt.Printf("\n%s[+] Security scan finished at %s. Results saved to: %s%s\n", Green, time.Now().Format("15:04:05"), *output, Reset)
+     // كشف الثغرات القاتلة (Critical)
+     if strings.Contains(lowerPath, ".env")  strings.Contains(lowerPath, "config")  
+        strings.Contains(lowerPath, "sql")  strings.Contains(lowerPath, ".git")  
+        strings.Contains(string(body), "DB_PASSWORD") || strings. Contains(string(body), "AWS_SECRET") {
+      severity = "[CRITICAL]"
+      color = RedCrystal
+      fmt.Print("\a\a") // تنبيه مكرر
+     } else if status == 403  strings.Contains(lowerPath, "admin")  status == 401 {
+      severity = "[HIGH]"
+      color = Gold
+     }
+
+     fmt.Printf("%s%-10s [%d] %-45s (Size: %d)%s\n", color, severity, status, fullURL, size, Reset)
+    }
+   }
+  }()
+}
+for scanner.Scan() { jobs <- scanner.Text() }
+close(jobs)
+wg.Wait()
 }
